@@ -263,17 +263,19 @@ export default function Home() {
   const handleMouseUp = (
     event: React.MouseEvent<HTMLCanvasElement, MouseEvent>
   ) => {
-    const index = selectedElement!.id;
-    const { id, tool } = elements[index];
+    if (selectedElement) {
+      const index = selectedElement!.id;
+      const { id, tool } = elements[index];
 
-    if (action === "drawing" || action === "resizing") {
-      const { x1, y1, x2, y2 } = adjustElementCoordinates(elements[index]);
+      if (action === "drawing" || action === "resizing") {
+        const { x1, y1, x2, y2 } = adjustElementCoordinates(elements[index]);
 
-      updateElement(id, x1, y1, x2, y2, tool);
+        updateElement(id, x1, y1, x2, y2, tool);
+      }
+
+      setAction("none");
+      setSelectedElement(null);
     }
-
-    setAction("none");
-    setSelectedElement(null);
   };
 
   // ----------------------------------------
