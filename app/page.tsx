@@ -1,10 +1,18 @@
 "use client";
 
+import getStroke, { StrokeOptions } from "perfect-freehand";
+
 import { HistoryState, useHistory } from "@/hooks/use-history";
 import { useEffect, useLayoutEffect, useState } from "react";
 import rough from "roughjs";
+import { RoughCanvas } from "roughjs/bin/canvas";
 import { Drawable } from "roughjs/bin/core";
 
+type StrokePoint = {
+  x: number;
+  y: number;
+  pressure?: number | undefined;
+};
 export interface SetElementProps {
   id: number;
   x1: number;
@@ -13,14 +21,14 @@ export interface SetElementProps {
   y2: number;
   offsetX?: number;
   offsetY?: number;
-  roughElement: Drawable;
+  xOffsets?: number[];
+  yOffsets?: number[];
+
+  roughElement?: Drawable | null;
   tool: string;
   position?: string | null;
-}
-
-interface Action {
-  action: any;
-  overwrite?: boolean;
+  points?: (StrokePoint | number[])[];
+  options?: StrokeOptions | undefined;
 }
 
 const generator = rough.generator();
@@ -35,17 +43,35 @@ const createElement = (
   x2: number,
   y2: number,
   tool: string
-) => {
+): SetElementProps => {
   // draw line
-  const roughElement =
-    tool === "line"
-      ? generator.line(x1, y1, x2, y2)
-      : generator.rectangle(x1, y1, x2 - x1, y2 - y1);
+
+  switch (tool) {
+    case "line":
+    case "rectangle":
+      const roughElement =
+        tool === "line"
+          ? generator.line(x1, y1, x2, y2)
+          : generator.rectangle(x1, y1, x2 - x1, y2 - y1);
+      return { id, x1, y1, x2, y2, roughElement, tool };
+
+    case "pencil":
+      return {
+        id,
+        x1,
+        y1,
+        x2,
+        y2,
+
+        tool,
+        points: [{ x: x1, y: y1 }],
+      };
+    default:
+      throw new Error("Invalid tool");
+  }
 
   // draw rectangle
   // const roughElement = ;
-
-  return { id, x1, y1, x2, y2, roughElement, tool };
 };
 
 //////////////////////////////////
@@ -66,6 +92,23 @@ const nearPoint = (
   return Math.abs(x - x1) < 5 && Math.abs(y - y1) < 5 ? name : null;
 };
 
+const onLine = (
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  x: number,
+  y: number,
+  maxDistance = 1
+) => {
+  const a = { x: x1, y: y1 };
+  const b = { x: x2, y: y2 };
+  const c = { x: x, y: y };
+  const offset = distance(a, b) - (distance(a, c) + distance(b, c));
+
+  return Math.abs(offset) < maxDistance ? "inside" : null;
+};
+
 const positionWithinElement = (
   x: number,
   y: number,
@@ -73,31 +116,44 @@ const positionWithinElement = (
 ) => {
   const { tool, x1, y1, x2, y2 } = element;
 
-  if (tool === "rectangle") {
-    const topLeft = nearPoint(x, y, x1, y1, "tl");
-    const topRight = nearPoint(x, y, x2, y1, "tr");
-    const bottomLeft = nearPoint(x, y, x1, y2, "bl");
-    const bottomRight = nearPoint(x, y, x2, y2, "br");
-    const inside = x >= x1 && x <= x2 && y >= y1 && y <= y2 ? "inside" : null;
+  switch (tool) {
+    case "line":
+      const on = onLine(x1, y1, x2, y2, x, y);
+      const start = nearPoint(x, y, x1, y1, "start");
+      const end = nearPoint(x, y, x2, y2, "end");
+      return start || end || on;
 
-    return topLeft || topRight || bottomLeft || bottomRight || inside;
+    case "rectangle":
+      const topLeft = nearPoint(x, y, x1, y1, "tl");
+      const topRight = nearPoint(x, y, x2, y1, "tr");
+      const bottomLeft = nearPoint(x, y, x1, y2, "bl");
+      const bottomRight = nearPoint(x, y, x2, y2, "br");
+      const inside = x >= x1 && x <= x2 && y >= y1 && y <= y2 ? "inside" : null;
 
-    // const minX = Math.min(x1, x2);
-    // const maxX = Math.max(x1, x2);
-    // const minY = Math.min(y1, y2);
-    // const maxY = Math.max(y1, y2);
+      return topLeft || topRight || bottomLeft || bottomRight || inside;
 
-    // return x >= minX && x <= maxX && y >= minY && y <= maxY ? "inside" : null;
-  } else {
-    const a = { x: x1, y: y1 };
-    const b = { x: x2, y: y2 };
-    const c = { x: x, y: y };
-    const offset = distance(a, b) - (distance(a, c) + distance(b, c));
+    case "pencil":
+      const betweenAnyPoint = element.points?.some((point, index) => {
+        const nextPoint = element.points?.[index + 1];
+        if (!nextPoint) return false;
+        return (
+          onLine(
+            (point as StrokePoint).x,
+            (point as StrokePoint).y,
+            (nextPoint as StrokePoint).x,
+            (nextPoint as StrokePoint).y,
+            x,
+            y,
+            5
+          ) !== null
+        );
+      });
 
-    const inside = Math.abs(offset) < 1 ? "inside" : null;
-    const start = nearPoint(x, y, x1, y1, "start");
-    const end = nearPoint(x, y, x2, y2, "end");
-    return start || end || inside;
+      console.log(betweenAnyPoint);
+      return betweenAnyPoint ? "inside" : null;
+
+    default:
+      throw new Error(`Type not recognised: ${tool}`);
   }
 };
 
@@ -191,6 +247,54 @@ function resizedCoordinates(
   }
 }
 
+////////////////////////////////////
+
+const getSvgPathFromStroke = (stroke: number[][]) => {
+  if (!stroke.length) return "";
+
+  const d = stroke.reduce(
+    (acc, [x0, y0], i, arr) => {
+      const [x1, y1] = arr[(i + 1) % arr.length];
+      acc.push(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
+      return acc;
+    },
+    ["M", ...stroke[0], "Q"]
+  );
+
+  d.push("Z");
+  return d.join(" ");
+};
+
+const drawElement = (
+  roughCanvas: RoughCanvas,
+  context: CanvasRenderingContext2D,
+  element: SetElementProps
+) => {
+  switch (element.tool) {
+    case "line":
+    case "rectangle":
+      roughCanvas.draw(element.roughElement!);
+      break;
+
+    case "pencil":
+      const stroke = getSvgPathFromStroke(
+        getStroke(element.points!, {
+          // size: 24,
+          // smoothing:
+        })
+      );
+
+      context.fill(new Path2D(stroke));
+      break;
+
+    default:
+      throw new Error(`Type not recognised: ${element.tool}`);
+  }
+};
+
+const adjustmentRequired = (tool: string) =>
+  ["line", "rectangle"].includes(tool);
+
 /////////////////////////////////
 
 export default function Home() {
@@ -198,7 +302,7 @@ export default function Home() {
 
   const [elements, setElement, undo, redo] = useHistory([]);
   const [action, setAction] = useState<string | boolean>("");
-  const [tool, setTool] = useState("line");
+  const [tool, setTool] = useState("pencil");
   const [selectedElement, setSelectedElement] =
     useState<null | SetElementProps>(null);
 
@@ -208,17 +312,8 @@ export default function Home() {
     context?.clearRect(0, 0, canvas.width, canvas.height);
 
     const roughCanvas = rough.canvas(canvas);
-    // const ctx = canvas.getContext("2d");
-    // ctx!.fillStyle = "green";
-    // ctx!.fillRect(10, 10, 150, 100);
-    // ctx?.strokeRect(0, 0, 150, 100);
 
-    // const rect = roughCanvas.rectangle(10, 10, 100, 100);
-    // const line = generator.line(10, 10, 110, 110);
-    // roughCanvas.draw(rect);
-    // roughCanvas.draw(line);
-
-    elements.forEach(({ roughElement }) => roughCanvas.draw(roughElement));
+    elements.forEach((element) => drawElement(roughCanvas, context!, element));
   }, [elements]);
 
   useEffect(() => {
@@ -261,10 +356,20 @@ export default function Home() {
       const element = getElementAtPosition(clientX, clientY, elements);
 
       if (element) {
-        const offsetX = clientX - element.x1;
-        const offsetY = clientY - element.y1;
+        if (element.tool === "pencil") {
+          const xOffsets = element.points!.map(
+            (point) => clientX - (point as StrokePoint).x
+          );
+          const yOffsets = element.points!.map(
+            (point) => clientY - (point as StrokePoint).y
+          );
+          setSelectedElement({ ...element, xOffsets, yOffsets });
+        } else {
+          const offsetX = clientX - element.x1;
+          const offsetY = clientY - element.y1;
+          setSelectedElement({ ...element, offsetX, offsetY });
+        }
 
-        setSelectedElement({ ...element, offsetX, offsetY });
         setElement((prevState: HistoryState) => prevState);
 
         if (element.position === "inside") {
@@ -301,7 +406,10 @@ export default function Home() {
       const index = selectedElement!.id;
       const { id, tool } = elements[index];
 
-      if (action === "drawing" || action === "resizing") {
+      if (
+        (action === "drawing" || action === "resizing") &&
+        adjustmentRequired(tool)
+      ) {
         const { x1, y1, x2, y2 } = adjustElementCoordinates(elements[index]);
 
         updateElement(id, x1, y1, x2, y2, tool);
@@ -323,10 +431,22 @@ export default function Home() {
     y2: number,
     tool: string
   ) => {
-    const updatedElement = createElement(id, x1, y1, x2, y2, tool);
-
     const elementsCopy = [...elements];
-    elementsCopy[id] = updatedElement;
+
+    switch (tool) {
+      case "line":
+      case "rectangle":
+        elementsCopy[id] = createElement(id, x1, y1, x2, y2, tool);
+        break;
+      case "pencil":
+        elementsCopy[id].points = [
+          ...elementsCopy[id].points!,
+          { x: x2, y: y2 },
+        ];
+        break;
+      default:
+        throw new Error(`Invalid tool: "${tool}".`);
+    }
     setElement(elementsCopy, true);
   };
 
@@ -348,16 +468,35 @@ export default function Home() {
 
       updateElement(index, x1, y1, clientX, clientY, tool);
     } else if (action === "moving") {
-      const { id, x1, x2, y1, y2, tool, offsetX, offsetY } =
-        selectedElement as SetElementProps;
+      if (selectedElement!.tool === "pencil") {
+        const { id } = selectedElement as SetElementProps;
+        const newPoints = selectedElement?.points!.map((point, index) => {
+          return {
+            x: clientX - selectedElement.xOffsets![index],
+            y: clientY - selectedElement.yOffsets![index],
+          };
+        });
 
-      const width = x2 - x1;
-      const height = y2 - y1;
+        const elementsCopy = [...elements];
 
-      const newX1 = clientX - offsetX!;
-      const newY1 = clientY - offsetY!;
+        elementsCopy[id] = {
+          ...elementsCopy[id],
+          points: newPoints,
+        };
 
-      updateElement(id, newX1, newY1, newX1 + width, newY1 + height, tool);
+        setElement(elementsCopy, true);
+      } else {
+        const { id, x1, x2, y1, y2, tool, offsetX, offsetY } =
+          selectedElement as SetElementProps;
+
+        const width = x2 - x1;
+        const height = y2 - y1;
+
+        const newX1 = clientX - offsetX!;
+        const newY1 = clientY - offsetY!;
+
+        updateElement(id, newX1, newY1, newX1 + width, newY1 + height, tool);
+      }
     } else if (action === "resizing") {
       const { id, tool, position, ...coordinates } =
         selectedElement as SetElementProps;
@@ -397,6 +536,14 @@ export default function Home() {
           onChange={() => setTool("rectangle")}
         />
         <label htmlFor="rectangle">Rectangle</label>
+
+        <input
+          type="radio"
+          id="pencil"
+          checked={tool === "pencil"}
+          onChange={() => setTool("pencil")}
+        />
+        <label htmlFor="pencil">Pencil</label>
       </div>
 
       <div style={{ position: "fixed", bottom: 0, padding: 10 }}>
@@ -423,7 +570,7 @@ export default function Home() {
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
       >
-        Hello
+        Canvas
       </canvas>
     </div>
   );
