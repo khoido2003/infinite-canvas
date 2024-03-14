@@ -1,10 +1,11 @@
 "use client";
 
-import { useLayoutEffect, useState } from "react";
+import { HistoryState, useHistory } from "@/hooks/use-history";
+import { useEffect, useLayoutEffect, useState } from "react";
 import rough from "roughjs";
 import { Drawable } from "roughjs/bin/core";
 
-interface SetElementProps {
+export interface SetElementProps {
   id: number;
   x1: number;
   y1: number;
@@ -15,6 +16,11 @@ interface SetElementProps {
   roughElement: Drawable;
   tool: string;
   position?: string | null;
+}
+
+interface Action {
+  action: any;
+  overwrite?: boolean;
 }
 
 const generator = rough.generator();
@@ -188,7 +194,9 @@ function resizedCoordinates(
 /////////////////////////////////
 
 export default function Home() {
-  const [elements, setElement] = useState<SetElementProps[]>([]);
+  // const [elements, setElement] = useState<SetElementProps[]>([]);
+
+  const [elements, setElement, undo, redo] = useHistory([]);
   const [action, setAction] = useState<string | boolean>("");
   const [tool, setTool] = useState("line");
   const [selectedElement, setSelectedElement] =
@@ -213,6 +221,31 @@ export default function Home() {
     elements.forEach(({ roughElement }) => roughCanvas.draw(roughElement));
   }, [elements]);
 
+  useEffect(() => {
+    function onKeydown(e: KeyboardEvent) {
+      switch (e.key) {
+        // case "Backspace":
+        //   deleteLayers();
+        //   break;
+        case "z":
+          if (e.ctrlKey || e.metaKey) {
+            undo();
+            break;
+          }
+        case "y":
+          if (e.ctrlKey || e.metaKey) {
+            redo();
+            break;
+          }
+      }
+    }
+
+    document.addEventListener("keydown", onKeydown);
+
+    return () => {
+      document.removeEventListener("keydown", onKeydown);
+    };
+  }, [undo, redo]);
   //-------------------------------
   // MOUSE DOWN
 
@@ -232,6 +265,7 @@ export default function Home() {
         const offsetY = clientY - element.y1;
 
         setSelectedElement({ ...element, offsetX, offsetY });
+        setElement((prevState: HistoryState) => prevState);
 
         if (element.position === "inside") {
           setAction("moving");
@@ -251,7 +285,7 @@ export default function Home() {
         tool
       );
       setAction("drawing");
-      setElement((prev) => [...prev, element]);
+      setElement((prev: HistoryState) => [...prev, element]);
       setSelectedElement(element);
     }
   };
@@ -293,7 +327,7 @@ export default function Home() {
 
     const elementsCopy = [...elements];
     elementsCopy[id] = updatedElement;
-    setElement(elementsCopy);
+    setElement(elementsCopy, true);
   };
 
   const handleMouseMove = (
@@ -363,6 +397,23 @@ export default function Home() {
           onChange={() => setTool("rectangle")}
         />
         <label htmlFor="rectangle">Rectangle</label>
+      </div>
+
+      <div style={{ position: "fixed", bottom: 0, padding: 10 }}>
+        <button
+          onClick={() => {
+            undo();
+          }}
+        >
+          Undo
+        </button>
+        <button
+          onClick={() => {
+            redo();
+          }}
+        >
+          Redo
+        </button>
       </div>
       <canvas
         id="canvas"
