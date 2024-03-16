@@ -3,10 +3,17 @@
 import getStroke, { StrokeOptions } from "perfect-freehand";
 
 import { HistoryState, useHistory } from "@/hooks/use-history";
-import { useEffect, useLayoutEffect, useState } from "react";
+import {
+  TextareaHTMLAttributes,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import rough from "roughjs";
 import { RoughCanvas } from "roughjs/bin/canvas";
 import { Drawable } from "roughjs/bin/core";
+import usePressedKeys from "@/hooks/use-pressed-key";
 
 type StrokePoint = {
   x: number;
@@ -23,6 +30,7 @@ export interface SetElementProps {
   offsetY?: number;
   xOffsets?: number[];
   yOffsets?: number[];
+  text?: string;
 
   roughElement?: Drawable | null;
   tool: string;
@@ -66,6 +74,10 @@ const createElement = (
         tool,
         points: [{ x: x1, y: y1 }],
       };
+
+    case "text":
+      return { id, tool, x1, y1, x2, y2, text: "" };
+
     default:
       throw new Error("Invalid tool");
   }
@@ -149,7 +161,6 @@ const positionWithinElement = (
         );
       });
 
-      console.log(betweenAnyPoint);
       return betweenAnyPoint ? "inside" : null;
 
     default:
@@ -225,12 +236,10 @@ function resizedCoordinates(
   switch (position) {
     case "tl":
       return { x1: clientX, y1: clientY, x2, y2 };
-
     case "start":
       return { x1: clientX, y1: clientY, x2, y2 };
     case "tr":
       return { x1: clientX, y1, x2, y2: clientY };
-
     case "bl":
       return {
         x1: clientX,
@@ -287,6 +296,10 @@ const drawElement = (
       context.fill(new Path2D(stroke));
       break;
 
+    case "text":
+      // context.font = "24px sans-serif";
+      // context.fillText(element.text!, element.x1, element.y1);
+      break;
     default:
       throw new Error(`Type not recognised: ${element.tool}`);
   }
@@ -300,21 +313,39 @@ const adjustmentRequired = (tool: string) =>
 export default function Home() {
   // const [elements, setElement] = useState<SetElementProps[]>([]);
 
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [startPanMousePosition, setStartPanMousePosition] = useState({
+    x: 0,
+    y: 0,
+  });
+
+  const pressedKeys = usePressedKeys();
+
   const [elements, setElement, undo, redo] = useHistory([]);
   const [action, setAction] = useState<string | boolean>("");
-  const [tool, setTool] = useState("pencil");
+  const [tool, setTool] = useState("rectangle");
   const [selectedElement, setSelectedElement] =
     useState<null | SetElementProps>(null);
+
+  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useLayoutEffect(() => {
     const canvas = document.getElementById("canvas") as HTMLCanvasElement;
     const context = canvas.getContext("2d");
-    context?.clearRect(0, 0, canvas.width, canvas.height);
-
     const roughCanvas = rough.canvas(canvas);
 
-    elements.forEach((element) => drawElement(roughCanvas, context!, element));
-  }, [elements]);
+    context?.clearRect(0, 0, canvas.width, canvas.height);
+
+    context?.save();
+    context?.translate(panOffset.x, panOffset.y);
+    // context?.fillRect(0, 0, 100, 100);
+
+    elements.forEach((element) => {
+      drawElement(roughCanvas, context!, element);
+    });
+
+    context?.restore();
+  }, [elements, panOffset]);
 
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
@@ -341,13 +372,61 @@ export default function Home() {
       document.removeEventListener("keydown", onKeydown);
     };
   }, [undo, redo]);
+
+  useEffect(() => {
+    const panFunction = (event: WheelEvent) => {
+      // console.log(event.deltaY, event.deltaY);
+      setPanOffset((prev) => ({
+        x: prev.x - event.deltaX,
+        y: prev.y - event.deltaY,
+      }));
+    };
+
+    document.addEventListener("wheel", panFunction);
+    return () => {
+      document.removeEventListener("wheel", panFunction);
+    };
+  }, []);
+
+  // // Handle the text selected focus
+  // useEffect(() => {
+  //   const textArea = textAreaRef.current;
+  //   if (action === "writing") {
+  //     textArea!.focus();
+  //   }
+  // }, [action, selectedElement]);
+
   //-------------------------------
   // MOUSE DOWN
+
+  const getMouseCoordinates = (
+    event: React.MouseEvent<HTMLCanvasElement, MouseEvent>
+  ) => {
+    // Get raw mouse coordinates
+    const clientX = event.clientX;
+    const clientY = event.clientY;
+
+    // Adjust for pan offset
+    const adjustedX = clientX - panOffset.x;
+    const adjustedY = clientY - panOffset.y;
+
+    return { clientX: adjustedX, clientY: adjustedY };
+  };
 
   const handleMouseDown = (
     event: React.MouseEvent<HTMLCanvasElement, MouseEvent>
   ) => {
-    const { clientX, clientY } = event;
+    if (action === "writing") {
+      return;
+    }
+
+    // const { clientX, clientY } = event;
+    const { clientX, clientY } = getMouseCoordinates(event);
+
+    if (event.button === 1 || pressedKeys.has(" ")) {
+      setAction("panning");
+      setStartPanMousePosition({ x: clientX, y: clientY });
+    }
 
     if (tool === "selection") {
       // If we are on an element
@@ -380,7 +459,7 @@ export default function Home() {
       }
     } else {
       const id = elements.length;
-      const { clientX, clientY } = event;
+      const { clientX, clientY } = getMouseCoordinates(event);
       const element = createElement(
         id,
         clientX,
@@ -389,9 +468,9 @@ export default function Home() {
         clientY,
         tool
       );
-      setAction("drawing");
       setElement((prev: HistoryState) => [...prev, element]);
       setSelectedElement(element);
+      setAction(tool === "text" ? "writing" : "drawing");
     }
   };
 
@@ -402,6 +481,8 @@ export default function Home() {
   const handleMouseUp = (
     event: React.MouseEvent<HTMLCanvasElement, MouseEvent>
   ) => {
+    const { clientX, clientY } = getMouseCoordinates(event);
+
     if (selectedElement) {
       const index = selectedElement!.id;
       const { id, tool } = elements[index];
@@ -414,10 +495,14 @@ export default function Home() {
 
         updateElement(id, x1, y1, x2, y2, tool);
       }
-
-      setAction("none");
-      setSelectedElement(null);
     }
+
+    if (action === "writing") {
+      return;
+    }
+
+    setAction("none");
+    setSelectedElement(null);
   };
 
   // ----------------------------------------
@@ -453,7 +538,18 @@ export default function Home() {
   const handleMouseMove = (
     event: React.MouseEvent<HTMLCanvasElement, MouseEvent>
   ) => {
-    const { clientX, clientY } = event;
+    const { clientX, clientY } = getMouseCoordinates(event);
+
+    if (action === "panning") {
+      const deltaX = clientX - startPanMousePosition.x;
+      const deltaY = clientY - startPanMousePosition.y;
+      setPanOffset((prev) => ({
+        x: prev.x + deltaX,
+        y: prev.y + deltaY,
+      }));
+
+      return;
+    }
 
     if (tool === "selection") {
       const element = getElementAtPosition(clientX, clientY, elements);
@@ -514,7 +610,7 @@ export default function Home() {
 
   return (
     <div>
-      <div style={{ position: "fixed" }}>
+      <div style={{ position: "fixed", zIndex: 2 }}>
         <input
           type="radio"
           id="selection"
@@ -546,7 +642,7 @@ export default function Home() {
         <label htmlFor="pencil">Pencil</label>
       </div>
 
-      <div style={{ position: "fixed", bottom: 0, padding: 10 }}>
+      <div style={{ position: "fixed", bottom: 0, padding: 10, zIndex: 2 }}>
         <button
           onClick={() => {
             undo();
@@ -562,6 +658,7 @@ export default function Home() {
           Redo
         </button>
       </div>
+
       <canvas
         id="canvas"
         width={window.innerWidth}
@@ -569,6 +666,7 @@ export default function Home() {
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        style={{ position: "absolute", zIndex: 1 }}
       >
         Canvas
       </canvas>
