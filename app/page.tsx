@@ -5,6 +5,7 @@ import getStroke, { StrokeOptions } from "perfect-freehand";
 import { HistoryState, useHistory } from "@/hooks/use-history";
 import {
   TextareaHTMLAttributes,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -311,15 +312,17 @@ const adjustmentRequired = (tool: string) =>
 /////////////////////////////////
 
 export default function Home() {
-  // const [elements, setElement] = useState<SetElementProps[]>([]);
-
+  //Panning
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [startPanMousePosition, setStartPanMousePosition] = useState({
     x: 0,
     y: 0,
   });
-
   const pressedKeys = usePressedKeys();
+
+  // Zoom in and out
+  const [scale, setScale] = useState(1);
+  const [scaleOffset, setScaleOffset] = useState({ x: 0, y: 0 });
 
   const [elements, setElement, undo, redo] = useHistory([]);
   const [action, setAction] = useState<string | boolean>("");
@@ -327,25 +330,63 @@ export default function Home() {
   const [selectedElement, setSelectedElement] =
     useState<null | SetElementProps>(null);
 
-  const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+  // const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const onZoom = useCallback(
+    (delta: number) => {
+      // Define the zoom step
+      const zoomStep = delta > 0 ? 0.1 : -0.1;
+
+      // Calculate the new scale factor
+      const newScale = scale + zoomStep;
+
+      // Define the minimum and maximum scale factors
+      const minScale = 0.1;
+      const maxScale = 10;
+
+      // Ensure the new scale factor stays within the defined range
+      const clampedScale = Math.min(Math.max(newScale, minScale), maxScale);
+
+      // Update the scale state
+      setScale(clampedScale);
+    },
+    [scale]
+  );
 
   useLayoutEffect(() => {
     const canvas = document.getElementById("canvas") as HTMLCanvasElement;
     const context = canvas.getContext("2d");
     const roughCanvas = rough.canvas(canvas);
 
+    // Clear canvas
     context?.clearRect(0, 0, canvas.width, canvas.height);
 
-    context?.save();
-    context?.translate(panOffset.x, panOffset.y);
-    // context?.fillRect(0, 0, 100, 100);
+    // Calculate scaled dimensions and offset
+    const scaleWidth = canvas.width * scale;
+    const scaleHeight = canvas.height * scale;
 
+    const scaleOffsetX = (scaleWidth - canvas.width) / 2;
+    const scaleOffsetY = (scaleHeight - canvas.height) / 2;
+    setScaleOffset({ x: scaleOffsetX, y: scaleOffsetY });
+
+    // Save current context state
+    context?.save();
+
+    // Apply translation and scaling
+    context?.translate(
+      panOffset.x * scale - scaleOffsetX,
+      panOffset.y * scale - scaleOffsetY
+    );
+    context?.scale(scale, scale);
+
+    // Draw elements
     elements.forEach((element) => {
       drawElement(roughCanvas, context!, element);
     });
 
+    // Restore previous context state
     context?.restore();
-  }, [elements, panOffset]);
+  }, [elements, panOffset, scale]);
 
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
@@ -374,27 +415,24 @@ export default function Home() {
   }, [undo, redo]);
 
   useEffect(() => {
-    const panFunction = (event: WheelEvent) => {
-      // console.log(event.deltaY, event.deltaY);
-      setPanOffset((prev) => ({
-        x: prev.x - event.deltaX,
-        y: prev.y - event.deltaY,
-      }));
+    const panOrZoomFunction = (event: WheelEvent) => {
+      if (pressedKeys.has("Meta") || pressedKeys.has("Control")) {
+        event.preventDefault(); // Prevent default zoom behavior
+        const zoomFactor = event.deltaY > 0 ? 0 - 1 : 0.1; // Adjust the zoom factor as desired
+        onZoom(zoomFactor);
+      } else {
+        setPanOffset((prev) => ({
+          x: prev.x - event.deltaX,
+          y: prev.y - event.deltaY,
+        }));
+      }
     };
 
-    document.addEventListener("wheel", panFunction);
+    document.addEventListener("wheel", panOrZoomFunction, { passive: false });
     return () => {
-      document.removeEventListener("wheel", panFunction);
+      document.removeEventListener("wheel", panOrZoomFunction);
     };
-  }, []);
-
-  // // Handle the text selected focus
-  // useEffect(() => {
-  //   const textArea = textAreaRef.current;
-  //   if (action === "writing") {
-  //     textArea!.focus();
-  //   }
-  // }, [action, selectedElement]);
+  }, [pressedKeys, onZoom]);
 
   //-------------------------------
   // MOUSE DOWN
@@ -403,8 +441,10 @@ export default function Home() {
     event: React.MouseEvent<HTMLCanvasElement, MouseEvent>
   ) => {
     // Get raw mouse coordinates
-    const clientX = event.clientX;
-    const clientY = event.clientY;
+    const clientX =
+      (event.clientX - panOffset.x * scale + scaleOffset.x) / scale;
+    const clientY =
+      (event.clientY - panOffset.y * scale + scaleOffset.y) / scale;
 
     // Adjust for pan offset
     const adjustedX = clientX - panOffset.x;
@@ -647,15 +687,40 @@ export default function Home() {
           onClick={() => {
             undo();
           }}
+          className="bg-slate-500 mr-3 p-3 text-white rounded-md"
         >
           Undo
         </button>
         <button
+          className="bg-slate-500 mr-3 p-3 text-white rounded-md"
           onClick={() => {
             redo();
           }}
         >
           Redo
+        </button>
+
+        <span className="mr-4"></span>
+
+        <button
+          className="bg-slate-500 mr-3 p-3 text-white rounded-md"
+          onClick={() => onZoom(-0.1)}
+        >
+          -
+        </button>
+        <button
+          className="bg-slate-500 mr-3 p-3 text-white rounded-md"
+          onClick={() => setScale(1)}
+        >
+          {`${new Intl.NumberFormat("en-GB", { style: "percent" }).format(
+            scale
+          )}`}
+        </button>
+        <button
+          className="bg-slate-500 mr-3 p-3 text-white rounded-md"
+          onClick={() => onZoom(0.1)}
+        >
+          +
         </button>
       </div>
 
