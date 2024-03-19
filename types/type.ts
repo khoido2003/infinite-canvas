@@ -22,4 +22,5 @@ export interface CanvasElement {
 
   roughElement?: Drawable;
   elementType: ElementType;
+  position?: string | null;
 }

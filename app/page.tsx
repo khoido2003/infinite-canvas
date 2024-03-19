@@ -7,12 +7,21 @@ import { throttle } from "lodash";
 import { CanvasElement, ElementType } from "@/types/type";
 import { createElement } from "@/actions/create-element";
 import { getElementAtPosition } from "@/utils/get-element-at-position";
+import { cursorForPosition } from "@/utils/cursor-for-position";
+import { resizeCoordinates } from "@/utils/resize-coordinates";
 
 const Home = () => {
   // HOOKS
 
+  // Type of the element: rectangle, line, pencil, circle
+  const [elementType, setElementType] = useState<ElementType>(
+    () => ElementType.Rectangle
+  );
+
   // Check if drawing or not
-  const [action, setAction] = useState<"moving" | "drawing" | "none">("none");
+  const [action, setAction] = useState<
+    "moving" | "drawing" | "none" | "resizing"
+  >("none");
 
   // List of elements on the canvas
   const [elements, setElements] = useState<CanvasElement[] | []>([]);
@@ -20,11 +29,6 @@ const Home = () => {
   // The element currently being drawn or selected
   const [selectedElement, setSelectedElement] = useState<CanvasElement | null>(
     null
-  );
-
-  // Type of the element: rectangle, line, pencil, circle
-  const [elementType, setElementType] = useState<ElementType>(
-    () => ElementType.Rectangle
   );
 
   useLayoutEffect(() => {
@@ -75,8 +79,10 @@ const Home = () => {
   const handleMouseDown = (
     event: React.MouseEvent<HTMLCanvasElement, MouseEvent>
   ) => {
+    // Current position of the mouse
     const { clientX, clientY } = event;
 
+    // When use selection mode
     if (elementType === "selection") {
       const element = getElementAtPosition(clientX, clientY, elements);
 
@@ -86,14 +92,19 @@ const Home = () => {
         const offsetY = clientY - element.y1;
 
         setSelectedElement({ ...element, offsetX, offsetY });
-        setAction("moving");
+
+        // Check if user moving element or resizing element
+        if (element.position === "inside") {
+          setAction("moving");
+        } else {
+          setAction("resizing");
+        }
       }
-    } else {
+    }
+    // Drawing mode
+    else {
       // Set the id for the new created element
       const id = elements.length;
-
-      // Current position of the mouse
-      const { clientX, clientY } = event;
 
       // Create a new element based on the mouse position
       const element = createElement({
@@ -118,14 +129,11 @@ const Home = () => {
       // The position of the mouse cursor
       const { clientX, clientY } = event;
 
-      // Change the mouse cursoe based on moving or drawing
+      // Change the mouse cursor based on moving or drawing
       if (elementType === "selection") {
-        document.body.style.cursor = getElementAtPosition(
-          clientX,
-          clientY,
-          elements
-        )
-          ? "move"
+        const element = getElementAtPosition(clientX, clientY, elements);
+        document.body.style.cursor = element
+          ? cursorForPosition(element.position!)
           : "default";
       }
 
@@ -135,22 +143,10 @@ const Home = () => {
         const { x1, y1, elementType } = elements[index];
 
         // Keep the position, only update the height and width due to the postion of the mouse
-
         updateElement(index, x1, y1, clientX, clientY, elementType);
-        // const updatedElement = createElement({
-        //   id: 1,
-        //   x1,
-        //   y1,
-        //   x2: clientX,
-        //   y2: clientY,
-        //   elementType,
-        // });
-
-        // // Update the new height and width of the element
-        // const elementsCopy = [...elements];
-        // elementsCopy[index] = updatedElement;
-        // setElements(elementsCopy);
-      } else if (action === "moving") {
+      }
+      // Moving element position
+      if (action === "moving") {
         const { id, x1, y1, x2, y2, offsetX, offsetY, elementType } =
           selectedElement as CanvasElement;
 
@@ -168,6 +164,21 @@ const Home = () => {
           newY1 + height,
           elementType
         );
+      }
+
+      // Resizing element
+      if (action === "resizing") {
+        const { id, elementType, position, ...coordinates } =
+          selectedElement as CanvasElement;
+
+        const { x1, y1, x2, y2 } = resizeCoordinates(
+          clientX,
+          clientY,
+          position!,
+          coordinates
+        )!;
+
+        updateElement(id, x1, y1, x2, y2, elementType);
       }
     },
     1000 / 60, // 60 FPS

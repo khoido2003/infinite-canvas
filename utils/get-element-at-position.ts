@@ -1,10 +1,15 @@
 import { CanvasElement } from "@/types/type";
-import { isWithinElement } from "./is-within-element";
+import { positionWithinElement } from "./is-within-element";
 
 export const getElementAtPosition = (
   x: number,
   y: number,
   elements: CanvasElement[]
 ) => {
-  return elements.find((element) => isWithinElement(x, y, element));
+  return elements
+    .map((element) => ({
+      ...element,
+      position: positionWithinElement(x, y, element),
+    }))
+    .find((element) => element.position !== null);
 };
