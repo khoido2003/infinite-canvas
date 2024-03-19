@@ -1,17 +1,18 @@
-import { SetElementProps } from "@/app/page";
+import { CanvasElement } from "@/types/type";
 import { useState } from "react";
 
-export type HistoryState = [
-  SetElementProps[],
-  (action: any, overwrite?: boolean) => void,
-  () => void,
-  () => void
-];
+export type HistoryState = {
+  elements: CanvasElement[];
+  setState: (action: any, overwrite?: boolean) => void;
+  undo: () => void;
+  redo: () => void;
+};
 
-export const useHistory = (initState: SetElementProps[]): HistoryState => {
+export const useHistory = (initState: CanvasElement[]) => {
   const [index, setIndex] = useState(0);
 
-  const [history, setHistory] = useState<SetElementProps[][]>([initState]);
+  // History array contain all the states
+  const [history, setHistory] = useState<CanvasElement[][]>([initState]);
 
   const setState = (action: any, overwrite = false) => {
     const newState =
@@ -22,24 +23,24 @@ export const useHistory = (initState: SetElementProps[]): HistoryState => {
       historyCopy[index] = newState;
       setHistory(historyCopy);
     } else {
-      // update the history by removing old state and rewrite everything
+      // Update the state to match the index
       const updatedState = [...history].slice(0, index + 1);
 
-      setHistory((prevState: SetElementProps[][]) => [
-        ...updatedState,
-        newState,
-      ]);
-      setIndex((prevState) => prevState + 1);
+      // Update the history to current state
+      setHistory((prevState) => [...updatedState, newState]);
+
+      // Update the index of the current state
+      setIndex((prev) => prev + 1);
     }
   };
 
   const undo = () => {
-    index > 0 && setIndex((prevState) => prevState - 1);
+    index > 0 && setIndex((prev) => prev - 1);
   };
 
   const redo = () => {
-    index < history.length - 1 && setIndex((prevState) => prevState + 1);
+    index < history.length - 1 && setIndex((prev) => prev + 1);
   };
 
-  return [history[index], setState, undo, redo];
+  return { elements: history[index], setState, undo, redo };
 };
