@@ -1,5 +1,5 @@
 import { CanvasElement } from "@/types/type";
-import { positionWithinElement } from "./is-within-element";
+import { positionWithinElement } from "./position-within-element";
 
 export const getElementAtPosition = (
   x: number,
