@@ -57,7 +57,7 @@ export const positionWithinElement = (
       // Check if the cursor is near the border of the circle
       const isNearBorder =
         Math.abs(1 - (normalizedX * normalizedX + normalizedY * normalizedY)) <=
-        1;
+        0.5;
 
       positionWithin = isInside ? "inside" : isNearBorder ? "border" : null;
       break;

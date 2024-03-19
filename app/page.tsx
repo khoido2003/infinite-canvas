@@ -1,7 +1,7 @@
 "use client";
 
 import rough from "roughjs";
-import { useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { throttle } from "lodash";
 
 import { CanvasElement, ElementType } from "@/types/type";
@@ -9,6 +9,7 @@ import { createElement } from "@/actions/create-element";
 import { getElementAtPosition } from "@/utils/get-element-at-position";
 import { cursorForPosition } from "@/utils/cursor-for-position";
 import { resizeCoordinates } from "@/utils/resize-coordinates";
+import { HistoryState, useHistory } from "@/hooks/use-history";
 
 const Home = () => {
   // HOOKS
@@ -24,7 +25,8 @@ const Home = () => {
   >("none");
 
   // List of elements on the canvas
-  const [elements, setElements] = useState<CanvasElement[] | []>([]);
+  // const [elements, setElements] = useState<CanvasElement[] | []>([]);
+  const { elements, redo, setState: setElements, undo } = useHistory([]);
 
   // The element currently being drawn or selected
   const [selectedElement, setSelectedElement] = useState<CanvasElement | null>(
@@ -50,6 +52,27 @@ const Home = () => {
     });
   }, [elements]);
 
+  //---------------------------------
+  // Handle keyboard events
+  useEffect(() => {
+    function onKeydown(e: KeyboardEvent) {
+      switch (e.key) {
+        case "z":
+          if (e.ctrlKey || e.metaKey) {
+            undo();
+            break;
+          }
+        case "y":
+          if (e.ctrlKey || e.metaKey) {
+            redo();
+            break;
+          }
+      }
+    }
+    document.addEventListener("keydown", onKeydown);
+    return () => document.removeEventListener("keydown", onKeydown);
+  }, [undo, redo]);
+
   ////////////////////////////////////////////////////////////
 
   // Functions
@@ -66,7 +89,7 @@ const Home = () => {
 
     const elementsCopy = [...elements];
     elementsCopy[id] = updatedElement;
-    setElements(elementsCopy);
+    setElements(elementsCopy, true);
   };
 
   //////////////////////////////////////////////////////////
@@ -92,6 +115,7 @@ const Home = () => {
         const offsetY = clientY - element.y1;
 
         setSelectedElement({ ...element, offsetX, offsetY });
+        setElements((prevState: HistoryState) => prevState);
 
         // Check if user moving element or resizing element
         if (element.position === "inside") {
@@ -117,7 +141,8 @@ const Home = () => {
       });
 
       setAction("drawing");
-      setElements((prev) => [...prev, element]);
+      setElements((prevState: CanvasElement[][]) => [...prevState, element]);
+      setSelectedElement(element);
     }
   };
 
@@ -243,6 +268,23 @@ const Home = () => {
           />
           <label htmlFor="circle">Circle</label>
         </div>
+      </div>
+
+      <div style={{ position: "fixed", bottom: 0, padding: 10 }}>
+        <button
+          onClick={() => {
+            undo();
+          }}
+        >
+          Undo
+        </button>
+        <button
+          onClick={() => {
+            redo();
+          }}
+        >
+          Redo
+        </button>
       </div>
 
       <canvas
