@@ -92,6 +92,7 @@ const Home = () => {
     switch (elementType) {
       case "line":
       case "rectangle":
+      case "circle":
         elementsCopy[id] = createElement({ id, x1, y1, x2, y2, elementType });
         break;
       case "pencil":

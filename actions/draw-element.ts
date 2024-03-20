@@ -11,6 +11,7 @@ export const drawElement = (
   switch (element.elementType) {
     case "line":
     case "rectangle":
+    case "circle":
       roughCanvas.draw(element.roughElement!);
       break;
 
