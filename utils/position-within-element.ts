@@ -1,6 +1,7 @@
-import { CanvasElement } from "@/types/type";
+import { CanvasElement, StrokePoint } from "@/types/type";
 import { distance } from "./distance";
 import { nearPoint } from "./near-point";
+import { onLine } from "./on-line";
 
 export const positionWithinElement = (
   x: number,
@@ -29,13 +30,13 @@ export const positionWithinElement = (
       break;
 
     case "line":
-      const a = { x: x1, y: y1 };
-      const b = { x: x2, y: y2 };
-      const c = { x: x, y: y };
-      const offset = distance(a, b) - (distance(a, c) + distance(b, c));
+      // Check if the cursor position is within the line
+      const insideLine = onLine(x1, y1, x2, y2, x, y);
 
-      const insideLine = Math.abs(offset) < 1 ? "inside" : null;
+      // Check if the cursor position is at the start of the line
       const start = nearPoint(x, y, x1, y1, "start");
+
+      // Check if the cursor position is at the end of the line
       const end = nearPoint(x, y, x2, y2, "end");
       positionWithin = start || end || insideLine;
       break;
@@ -60,6 +61,26 @@ export const positionWithinElement = (
         0.5;
 
       positionWithin = isInside ? "inside" : isNearBorder ? "border" : null;
+      break;
+
+    case "pencil":
+      const betweenAnyPoint = element.points?.some((point, index) => {
+        const nextPoint = element.points?.[index + 1] as StrokePoint;
+        if (!nextPoint) return false;
+        return (
+          onLine(
+            (point as StrokePoint).x,
+            (point as StrokePoint).y,
+            nextPoint.x,
+            nextPoint.y,
+            x,
+            y,
+            5
+          ) !== null
+        );
+      });
+
+      positionWithin = betweenAnyPoint ? "inside" : null;
       break;
 
     default:

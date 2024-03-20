@@ -47,7 +47,15 @@ export const createElement = ({
       break;
 
     case "pencil":
-      break;
+      return {
+        id,
+        x1,
+        y1,
+        x2,
+        y2,
+        elementType,
+        points: [{ x: x1, y: y1 }],
+      };
     default:
       throw new Error("Invalid element type");
   }

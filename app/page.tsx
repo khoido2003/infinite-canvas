@@ -3,13 +3,15 @@
 import rough from "roughjs";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { throttle } from "lodash";
+import getStroke, { StrokeOptions } from "perfect-freehand";
 
-import { CanvasElement, ElementType } from "@/types/type";
+import { CanvasElement, ElementType, StrokePoint } from "@/types/type";
 import { createElement } from "@/actions/create-element";
 import { getElementAtPosition } from "@/utils/get-element-at-position";
 import { cursorForPosition } from "@/utils/cursor-for-position";
 import { resizeCoordinates } from "@/utils/resize-coordinates";
 import { HistoryState, useHistory } from "@/hooks/use-history";
+import { drawElement } from "@/actions/draw-element";
 
 const Home = () => {
   // HOOKS
@@ -48,7 +50,7 @@ const Home = () => {
 
     // Loop through the list of elements to draw all of them on the canvas with roughjs
     elements.forEach((element) => {
-      roughCanvas.draw(element.roughElement!);
+      drawElement(roughCanvas, context!, element);
     });
   }, [elements]);
 
@@ -85,10 +87,22 @@ const Home = () => {
     y2: number,
     elementType: ElementType
   ) => {
-    const updatedElement = createElement({ id, x1, y1, x2, y2, elementType });
-
     const elementsCopy = [...elements];
-    elementsCopy[id] = updatedElement;
+
+    switch (elementType) {
+      case "line":
+      case "rectangle":
+        elementsCopy[id] = createElement({ id, x1, y1, x2, y2, elementType });
+        break;
+      case "pencil":
+        elementsCopy[id].points = [
+          ...elementsCopy[id].points!,
+          { x: x2, y: y2 },
+        ];
+        break;
+      default:
+        throw new Error(`Invalid tool: "${elementType}".`);
+    }
     setElements(elementsCopy, true);
   };
 
@@ -110,11 +124,27 @@ const Home = () => {
       const element = getElementAtPosition(clientX, clientY, elements);
 
       if (element) {
-        // Calculate the distance between the mouse to the coordinates of the element
-        const offsetX = clientX - element.x1;
-        const offsetY = clientY - element.y1;
+        // If Drawing with freehand
+        if (element.elementType === "pencil") {
+          // Calculate the distance between each point of the line to the  position of the mouse cursor then sava it to array
 
-        setSelectedElement({ ...element, offsetX, offsetY });
+          const xOffsets = element.points!.map(
+            (point) => clientX - (point as StrokePoint).x
+          );
+          const yOffsets = element.points!.map(
+            (point) => clientY - (point as StrokePoint).y
+          );
+          setSelectedElement({ ...element, xOffsets, yOffsets });
+        }
+
+        // If Drawing with rectangle, circle or line
+        else {
+          // Calculate the distance between the mouse to the coordinates of the element
+          const offsetX = clientX - element.x1;
+          const offsetY = clientY - element.y1;
+          setSelectedElement({ ...element, offsetX, offsetY });
+        }
+
         setElements((prevState: HistoryState) => prevState);
 
         // Check if user moving element or resizing element
@@ -172,23 +202,44 @@ const Home = () => {
       }
       // Moving element position
       if (action === "moving") {
-        const { id, x1, y1, x2, y2, offsetX, offsetY, elementType } =
-          selectedElement as CanvasElement;
+        if (selectedElement!.elementType === "pencil") {
+          const { id } = selectedElement as CanvasElement;
+          const newPoints = selectedElement?.points!.map((point, index) => {
+            return {
+              x: clientX - selectedElement.xOffsets![index],
+              y: clientY - selectedElement.yOffsets![index],
+            };
+          });
 
-        const width = x2 - x1;
-        const height = y2 - y1;
+          const elementsCopy = [...elements];
 
-        const newX1 = clientX - offsetX!;
-        const newY1 = clientY - offsetY!;
+          // Update the state of the drawing points
+          elementsCopy[id] = {
+            ...elementsCopy[id],
+            points: newPoints,
+          };
 
-        updateElement(
-          id,
-          newX1,
-          newY1,
-          newX1 + width,
-          newY1 + height,
-          elementType
-        );
+          setElements(elementsCopy, true);
+        } else {
+          // Update the state of the rectangle | line | circle when moving
+          const { id, x1, y1, x2, y2, offsetX, offsetY, elementType } =
+            selectedElement as CanvasElement;
+
+          const width = x2 - x1;
+          const height = y2 - y1;
+
+          const newX1 = clientX - offsetX!;
+          const newY1 = clientY - offsetY!;
+
+          updateElement(
+            id,
+            newX1,
+            newY1,
+            newX1 + width,
+            newY1 + height,
+            elementType
+          );
+        }
       }
 
       // Resizing element
@@ -268,10 +319,25 @@ const Home = () => {
           />
           <label htmlFor="circle">Circle</label>
         </div>
+
+        <div>
+          <input
+            type="radio"
+            id="pencil"
+            checked={elementType === "pencil"}
+            onChange={() => setElementType(ElementType.Pencil)}
+            className="mr-2"
+          />
+          <label htmlFor="pencil">Pencil</label>
+        </div>
       </div>
 
-      <div style={{ position: "fixed", bottom: 0, padding: 10 }}>
+      <div
+        style={{ position: "fixed", bottom: 0, padding: 10 }}
+        className="flex gap-4"
+      >
         <button
+          className="bg-slate-900 text-white p-3 rounded-md"
           onClick={() => {
             undo();
           }}
@@ -279,6 +345,7 @@ const Home = () => {
           Undo
         </button>
         <button
+          className="bg-slate-900 text-white p-3 rounded-md"
           onClick={() => {
             redo();
           }}
