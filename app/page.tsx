@@ -1,7 +1,13 @@
 "use client";
 
 import rough from "roughjs";
-import { useEffect, useLayoutEffect, useState } from "react";
+import {
+  DetailedHTMLProps,
+  InputHTMLAttributes,
+  useEffect,
+  useLayoutEffect,
+  useState,
+} from "react";
 import { throttle } from "lodash";
 import getStroke, { StrokeOptions } from "perfect-freehand";
 
@@ -12,6 +18,7 @@ import { cursorForPosition } from "@/utils/cursor-for-position";
 import { resizeCoordinates } from "@/utils/resize-coordinates";
 import { HistoryState, useHistory } from "@/hooks/use-history";
 import { drawElement } from "@/actions/draw-element";
+import { resizeDrawFreehand } from "@/utils/resize-draw-freehand";
 
 const Home = () => {
   // HOOKS
@@ -35,6 +42,13 @@ const Home = () => {
     null
   );
 
+  const [penSize, setPenSize] = useState(6);
+
+  // Event handler to update the pen size
+  const handlePenSizeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setPenSize(Number(event.target.value));
+  };
+
   useLayoutEffect(() => {
     // Setup the canvas
     const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -50,9 +64,9 @@ const Home = () => {
 
     // Loop through the list of elements to draw all of them on the canvas with roughjs
     elements.forEach((element) => {
-      drawElement(roughCanvas, context!, element);
+      drawElement(roughCanvas, context!, element, penSize);
     });
-  }, [elements]);
+  }, [elements, penSize]);
 
   //---------------------------------
   // Handle keyboard events
@@ -190,7 +204,7 @@ const Home = () => {
         const element = getElementAtPosition(clientX, clientY, elements);
         document.body.style.cursor = element
           ? cursorForPosition(element.position!)
-          : "default";
+          : "crosshair";
       }
 
       if (action === "drawing") {
@@ -245,17 +259,30 @@ const Home = () => {
 
       // Resizing element
       if (action === "resizing") {
-        const { id, elementType, position, ...coordinates } =
-          selectedElement as CanvasElement;
+        // Resizing drawhand element
+        if (selectedElement!.elementType === "pencil") {
+          resizeDrawFreehand(
+            elements,
+            selectedElement!,
+            clientX,
+            clientY,
+            setElements
+          );
+        }
+        // Resizing other elements
+        else {
+          const { id, elementType, position, ...coordinates } =
+            selectedElement as CanvasElement;
 
-        const { x1, y1, x2, y2 } = resizeCoordinates(
-          clientX,
-          clientY,
-          position!,
-          coordinates
-        )!;
+          const { x1, y1, x2, y2 } = resizeCoordinates(
+            clientX,
+            clientY,
+            position!,
+            coordinates
+          )!;
 
-        updateElement(id, x1, y1, x2, y2, elementType);
+          updateElement(id, x1, y1, x2, y2, elementType);
+        }
       }
     },
     1000 / 60, // 60 FPS
@@ -331,6 +358,20 @@ const Home = () => {
           />
           <label htmlFor="pencil">Pencil</label>
         </div>
+
+        {elementType === "pencil" && (
+          <div>
+            <input
+              id="penSize"
+              type="range"
+              min={6}
+              max={10}
+              value={penSize}
+              onChange={handlePenSizeChange}
+            />
+            <label htmlFor="penSize">Size</label>
+          </div>
+        )}
       </div>
 
       <div

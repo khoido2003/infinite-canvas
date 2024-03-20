@@ -6,7 +6,8 @@ import { RoughCanvas } from "roughjs/bin/canvas";
 export const drawElement = (
   roughCanvas: RoughCanvas,
   context: CanvasRenderingContext2D,
-  element: CanvasElement
+  element: CanvasElement,
+  size: number = 6
 ) => {
   switch (element.elementType) {
     case "line":
@@ -16,7 +17,11 @@ export const drawElement = (
       break;
 
     case "pencil":
-      const stroke = getSvgPathFromStroke(getStroke(element.points!, {}));
+      const stroke = getSvgPathFromStroke(
+        getStroke(element.points!, {
+          size: size,
+        })
+      );
       context.fill(new Path2D(stroke));
       break;
 

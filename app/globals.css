@@ -31,3 +31,7 @@
     text-wrap: balance;
   }
 } */
+
+body {
+  cursor: crosshair;
+}
