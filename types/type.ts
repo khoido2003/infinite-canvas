@@ -27,7 +27,7 @@ export interface CanvasElement {
   roughElement?: Drawable;
   elementType: ElementType;
   position?: string | null;
-  points?: (StrokePoint | number[])[];
+  points?: StrokePoint[];
   options?: StrokeOptions | undefined;
 }
 

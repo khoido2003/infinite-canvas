@@ -64,7 +64,30 @@ export const positionWithinElement = (
       break;
 
     case "pencil":
+      let checkStart: string | null = null;
+      let checkEnd: string | null = null;
+
       const betweenAnyPoint = element.points?.some((point, index) => {
+        if (index === 0) {
+          checkStart = nearPoint(
+            x,
+            y,
+            (point as StrokePoint).x,
+            (point as StrokePoint).y,
+            "start"
+          );
+        }
+
+        if (index === element.points!.length - 2) {
+          checkEnd = nearPoint(
+            x,
+            y,
+            (point as StrokePoint).x,
+            (point as StrokePoint).y,
+            "end"
+          );
+        }
+
         const nextPoint = element.points?.[index + 1] as StrokePoint;
         if (!nextPoint) return false;
         return (
@@ -79,8 +102,16 @@ export const positionWithinElement = (
           ) !== null
         );
       });
-
       positionWithin = betweenAnyPoint ? "inside" : null;
+
+      if (checkStart === "start") {
+        positionWithin = "start";
+      }
+
+      if (checkEnd === "end") {
+        positionWithin = "end";
+      }
+
       break;
 
     default:
