@@ -18,6 +18,13 @@ import usePressedKeys from "@/hooks/use-pressed-key";
 const Home = () => {
   // HOOKS
 
+  // Prevent dehydration
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true); // Set isClient to true when component mounts
+  }, []);
+
   // Type of the element: rectangle, line, pencil, circle
   const [elementType, setElementType] = useState<ElementType>(
     () => ElementType.Rectangle
@@ -445,6 +452,7 @@ const Home = () => {
 
   // ====================================================================
 
+  if (isClient === false) return null;
   return (
     <div>
       <div className="fixed top-2 left-3 flex gap-3 z-10">
