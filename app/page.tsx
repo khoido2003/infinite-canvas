@@ -63,6 +63,7 @@ const Home = () => {
   //-------------------------------
 
   useLayoutEffect(() => {
+    if (isClient === false) return;
     // Setup the canvas
     const canvas = document.getElementById("canvas") as HTMLCanvasElement;
 
@@ -102,7 +103,7 @@ const Home = () => {
 
     // Restore the state of the canvas back to before save()
     context?.restore();
-  }, [elements, penSize, panOffset, scale]);
+  }, [elements, penSize, panOffset, scale, isClient]);
 
   //---------------------------------
 
