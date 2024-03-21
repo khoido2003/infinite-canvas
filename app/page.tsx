@@ -1,7 +1,7 @@
 "use client";
 
 import rough from "roughjs";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { throttle } from "lodash";
 
 import { CanvasElement, ElementType, StrokePoint } from "@/types/type";
@@ -47,6 +47,10 @@ const Home = () => {
     y: 0,
   });
 
+  // Zoom in/out in canvas
+  const [scale, setScale] = useState(1);
+  const [scaleOffset, setScaleOffset] = useState({ x: 0, y: 0 });
+
   const pressedKeys = usePressedKeys();
 
   //-------------------------------
@@ -64,18 +68,37 @@ const Home = () => {
     // Erase the whole canvas or else the old element or old state will still be there and causing some weird behaviors.
     context?.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Calculate the scaled dimension and offset
+    const scaleWidth = canvas.width * scale;
+    const scaleHeight = canvas.height * scale;
+
+    const scaleOffsetX = (scaleWidth - canvas.width) / 2;
+    const scaleOffsetY = (scaleHeight - canvas.height) / 2;
+    setScaleOffset({ x: scaleOffsetX, y: scaleOffsetY });
+
+    // Save the state of the canvas
     context?.save();
-    context?.translate(panOffset.x, panOffset.y);
+
+    // Translate the canvas based on pan or zoom:
+    context?.translate(
+      panOffset.x * scale - scaleOffsetX,
+      panOffset.y * scale - scaleOffsetY
+    );
+
+    // Zoom the canvas
+    context?.scale(scale, scale);
 
     // Loop through the list of elements to draw all of them on the canvas with roughjs
     elements.forEach((element) => {
       drawElement(roughCanvas, context!, element, penSize);
     });
 
+    // Restore the state of the canvas back to before save()
     context?.restore();
-  }, [elements, penSize, panOffset]);
+  }, [elements, penSize, panOffset, scale]);
 
   //---------------------------------
+
   // Handle keyboard events
   useEffect(() => {
     function onKeydown(e: KeyboardEvent) {
@@ -96,21 +119,54 @@ const Home = () => {
     return () => document.removeEventListener("keydown", onKeydown);
   }, [undo, redo]);
 
+  //-------------------------------
+
+  // Handle zoom function
+  const onZoom = useCallback(
+    (delta: number) => {
+      // definde the zoom step
+      const zoomStep = delta > 0 ? 0.1 : -0.1;
+
+      // calculate the new scale factor
+      const newScale = scale + zoomStep;
+
+      // define the minimum and maximum scale factor
+      const minScale = 0.1;
+      const maxScale = 10;
+
+      // Ensure the new scale factor stays within the defined range
+      const clampedScale = Math.min(Math.max(newScale, minScale), maxScale);
+
+      // Update the scale
+      setScale(clampedScale);
+    },
+    [scale]
+  );
+
   // Handle pan scrolling
   useEffect(() => {
-    const panFunction = (event: WheelEvent) => {
-      // console.log(event.deltaY, event.deltaY);
-      setPanOffset((prev) => ({
-        x: prev.x - event.deltaX,
-        y: prev.y - event.deltaY,
-      }));
+    const panOrZoomFunction = (event: WheelEvent) => {
+      if (pressedKeys.has("Meta") || pressedKeys.has("Control")) {
+        // Prevent default zoom behavior
+        event.preventDefault();
+
+        // Adjust the zoom factor as desired
+        const zoomFactor = event.deltaY > 0 ? 0 - 1 : 0.1;
+
+        onZoom(zoomFactor);
+      } else {
+        setPanOffset((prev) => ({
+          x: prev.x - event.deltaX,
+          y: prev.y - event.deltaY,
+        }));
+      }
     };
 
-    document.addEventListener("wheel", panFunction);
+    document.addEventListener("wheel", panOrZoomFunction, { passive: false });
     return () => {
-      document.removeEventListener("wheel", panFunction);
+      document.removeEventListener("wheel", panOrZoomFunction);
     };
-  }, []);
+  }, [onZoom, pressedKeys]);
 
   ////////////////////////////////////////////////////////////
 
@@ -153,6 +209,8 @@ const Home = () => {
     setPenSize(Number(event.target.value));
   };
 
+  // -----------------------------
+
   //////////////////////////////////////////////////////////
 
   // ACTIONS
@@ -167,7 +225,12 @@ const Home = () => {
     setIsMouseDown(true);
 
     // Current position of the mouse
-    const { clientX, clientY } = getMouseCoordinates(event, panOffset);
+    const { clientX, clientY } = getMouseCoordinates(
+      event,
+      panOffset,
+      scale,
+      scaleOffset
+    );
 
     // Panning in the canvas
     if (event.button === 1 || pressedKeys.has(" ")) {
@@ -249,7 +312,12 @@ const Home = () => {
   const handleMouseMove = throttle(
     (event: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
       // The position of the mouse cursor
-      const { clientX, clientY } = getMouseCoordinates(event, panOffset);
+      const { clientX, clientY } = getMouseCoordinates(
+        event,
+        panOffset,
+        scale,
+        scaleOffset
+      );
 
       // Panning in the canvas with mouse + space
       if (action === "panning") {
@@ -481,6 +549,29 @@ const Home = () => {
         >
           Redo
         </button>
+
+        <div className="flex justify-center items-center fixed right-20">
+          <button
+            className="bg-slate-500 mr-3 px-3 py-1 text-white rounded-md"
+            onClick={() => onZoom(-0.1)}
+          >
+            -
+          </button>
+          <button
+            className="bg-slate-500 mr-3 px-3 py-1 text-white rounded-md"
+            onClick={() => setScale(1)}
+          >
+            {`${new Intl.NumberFormat("en-GB", { style: "percent" }).format(
+              scale
+            )}`}
+          </button>
+          <button
+            className="bg-slate-500 mr-3 px-3 py-1 text-white rounded-md"
+            onClick={() => onZoom(0.1)}
+          >
+            +
+          </button>
+        </div>
       </div>
 
       <canvas
