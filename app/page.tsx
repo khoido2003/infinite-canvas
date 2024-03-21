@@ -12,6 +12,8 @@ import { resizeCoordinates } from "@/utils/resize-coordinates";
 import { HistoryState, useHistory } from "@/hooks/use-history";
 import { drawElement } from "@/actions/draw-element";
 import { resizeDrawFreehand } from "@/utils/resize-draw-freehand";
+import { getMouseCoordinates } from "@/utils/get-mouse-coordinates";
+import usePressedKeys from "@/hooks/use-pressed-key";
 
 const Home = () => {
   // HOOKS
@@ -23,7 +25,7 @@ const Home = () => {
 
   // Check if drawing or not
   const [action, setAction] = useState<
-    "moving" | "drawing" | "none" | "resizing"
+    "moving" | "drawing" | "none" | "resizing" | "panning"
   >("none");
 
   // List of elements on the canvas
@@ -38,6 +40,17 @@ const Home = () => {
   const [penSize, setPenSize] = useState(6);
   const [isMouseDown, setIsMouseDown] = useState(false);
 
+  // Create Pan offset
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [startPanMousePosition, setStartPanMousePosition] = useState({
+    x: 0,
+    y: 0,
+  });
+
+  const pressedKeys = usePressedKeys();
+
+  //-------------------------------
+
   useLayoutEffect(() => {
     // Setup the canvas
     const canvas = document.getElementById("canvas") as HTMLCanvasElement;
@@ -45,17 +58,22 @@ const Home = () => {
     // representing a two-dimensional rendering context.
     const context = canvas.getContext("2d");
 
+    // Linking roughjs to html canvas
+    const roughCanvas = rough.canvas(canvas);
+
     // Erase the whole canvas or else the old element or old state will still be there and causing some weird behaviors.
     context?.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Linking roughjs to html canvas
-    const roughCanvas = rough.canvas(canvas);
+    context?.save();
+    context?.translate(panOffset.x, panOffset.y);
 
     // Loop through the list of elements to draw all of them on the canvas with roughjs
     elements.forEach((element) => {
       drawElement(roughCanvas, context!, element, penSize);
     });
-  }, [elements, penSize]);
+
+    context?.restore();
+  }, [elements, penSize, panOffset]);
 
   //---------------------------------
   // Handle keyboard events
@@ -77,6 +95,22 @@ const Home = () => {
     document.addEventListener("keydown", onKeydown);
     return () => document.removeEventListener("keydown", onKeydown);
   }, [undo, redo]);
+
+  // Handle pan scrolling
+  useEffect(() => {
+    const panFunction = (event: WheelEvent) => {
+      // console.log(event.deltaY, event.deltaY);
+      setPanOffset((prev) => ({
+        x: prev.x - event.deltaX,
+        y: prev.y - event.deltaY,
+      }));
+    };
+
+    document.addEventListener("wheel", panFunction);
+    return () => {
+      document.removeEventListener("wheel", panFunction);
+    };
+  }, []);
 
   ////////////////////////////////////////////////////////////
 
@@ -129,11 +163,19 @@ const Home = () => {
   const handleMouseDown = (
     event: React.MouseEvent<HTMLCanvasElement, MouseEvent>
   ) => {
+    // Check if mouse is clicked
     setIsMouseDown(true);
 
     // Current position of the mouse
-    const { clientX, clientY } = event;
+    const { clientX, clientY } = getMouseCoordinates(event, panOffset);
 
+    // Panning in the canvas
+    if (event.button === 1 || pressedKeys.has(" ")) {
+      setAction("panning");
+      setStartPanMousePosition({ x: clientX, y: clientY });
+    }
+
+    // Erase element
     if (elementType === "erase") {
       const element = getElementAtPosition(clientX, clientY, elements);
 
@@ -207,7 +249,19 @@ const Home = () => {
   const handleMouseMove = throttle(
     (event: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
       // The position of the mouse cursor
-      const { clientX, clientY } = event;
+      const { clientX, clientY } = getMouseCoordinates(event, panOffset);
+
+      // Panning in the canvas with mouse + space
+      if (action === "panning") {
+        const deltaX = clientX - startPanMousePosition.x;
+        const deltaY = clientY - startPanMousePosition.y;
+        setPanOffset((prev) => ({
+          x: prev.x + deltaX,
+          y: prev.y + deltaY,
+        }));
+
+        return;
+      }
 
       // Erase element on the canvas
       if (elementType === "erase" && isMouseDown === true) {
@@ -325,7 +379,7 @@ const Home = () => {
 
   return (
     <div>
-      <div className="fixed top-2 left-3 flex gap-3">
+      <div className="fixed top-2 left-3 flex gap-3 z-10">
         <div>
           <input
             type="radio"
@@ -408,7 +462,7 @@ const Home = () => {
       </div>
 
       <div
-        style={{ position: "fixed", bottom: 0, padding: 10 }}
+        style={{ position: "fixed", bottom: 0, padding: 10, zIndex: 10 }}
         className="flex gap-4"
       >
         <button

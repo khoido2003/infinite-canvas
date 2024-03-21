@@ -1,5 +1,5 @@
 import { CanvasElement, StrokePoint } from "@/types/type";
-import { distance } from "./distance";
+
 import { nearPoint } from "./near-point";
 import { onLine } from "./on-line";
 
