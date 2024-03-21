@@ -31,7 +31,13 @@ export const resizeDrawFreehand = (
   const scaleY = (clientY - minY) / originalHeight;
 
   // Adjust the coordinates of each point in the stroke path
+
   const newPoints = points?.map((point) => {
+    // (point.x - minX): This calculates the distance of the point's x-coordinate from the left edge of the original bounding box.
+
+    // (point.x - minX) * scaleX: This scales the distance calculated in step 1 by the scaleX factor, which effectively stretches or compresses the distance based on the change in width.
+
+    // minX + (point.x - minX) * scaleX: This adds the scaled distance back to the left edge of the original bounding box, resulting in the new x-coordinate for the point.
     return {
       x: minX + (point.x - minX) * scaleX,
       y: minY + (point.y - minY) * scaleY,

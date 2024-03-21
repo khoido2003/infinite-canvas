@@ -1,15 +1,8 @@
 "use client";
 
 import rough from "roughjs";
-import {
-  DetailedHTMLProps,
-  InputHTMLAttributes,
-  useEffect,
-  useLayoutEffect,
-  useState,
-} from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { throttle } from "lodash";
-import getStroke, { StrokeOptions } from "perfect-freehand";
 
 import { CanvasElement, ElementType, StrokePoint } from "@/types/type";
 import { createElement } from "@/actions/create-element";
@@ -43,11 +36,7 @@ const Home = () => {
   );
 
   const [penSize, setPenSize] = useState(6);
-
-  // Event handler to update the pen size
-  const handlePenSizeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setPenSize(Number(event.target.value));
-  };
+  const [isMouseDown, setIsMouseDown] = useState(false);
 
   useLayoutEffect(() => {
     // Setup the canvas
@@ -115,10 +104,19 @@ const Home = () => {
           { x: x2, y: y2 },
         ];
         break;
+      case "erase":
+        break;
       default:
         throw new Error(`Invalid tool: "${elementType}".`);
     }
     setElements(elementsCopy, true);
+  };
+
+  // ----------------------------
+
+  // Event handler to update the pen size
+  const handlePenSizeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setPenSize(Number(event.target.value));
   };
 
   //////////////////////////////////////////////////////////
@@ -131,11 +129,23 @@ const Home = () => {
   const handleMouseDown = (
     event: React.MouseEvent<HTMLCanvasElement, MouseEvent>
   ) => {
+    setIsMouseDown(true);
+
     // Current position of the mouse
     const { clientX, clientY } = event;
 
+    if (elementType === "erase") {
+      const element = getElementAtPosition(clientX, clientY, elements);
+
+      if (element) {
+        const newElements = elements.filter((el) => el.id !== element!.id);
+
+        setElements(newElements);
+      }
+    }
+
     // When use selection mode
-    if (elementType === "selection") {
+    else if (elementType === "selection") {
       const element = getElementAtPosition(clientX, clientY, elements);
 
       if (element) {
@@ -198,6 +208,17 @@ const Home = () => {
     (event: React.MouseEvent<HTMLCanvasElement, MouseEvent>) => {
       // The position of the mouse cursor
       const { clientX, clientY } = event;
+
+      // Erase element on the canvas
+      if (elementType === "erase" && isMouseDown === true) {
+        const element = getElementAtPosition(clientX, clientY, elements);
+
+        if (element) {
+          const newElements = elements.filter((el) => el.id !== element!.id);
+
+          setElements(newElements);
+        }
+      }
 
       // Change the mouse cursor based on moving or drawing
       if (elementType === "selection") {
@@ -297,6 +318,7 @@ const Home = () => {
   ) => {
     setAction("none");
     setSelectedElement(null);
+    setIsMouseDown(false);
   };
 
   // ====================================================================
@@ -346,6 +368,17 @@ const Home = () => {
             className="mr-2"
           />
           <label htmlFor="circle">Circle</label>
+        </div>
+
+        <div>
+          <input
+            type="radio"
+            id="erase"
+            checked={elementType === "erase"}
+            onChange={() => setElementType(ElementType.Erase)}
+            className="mr-2"
+          />
+          <label htmlFor="erase">Erase</label>
         </div>
 
         <div>

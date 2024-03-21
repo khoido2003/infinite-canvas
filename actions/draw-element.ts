@@ -24,8 +24,10 @@ export const drawElement = (
       );
       context.fill(new Path2D(stroke));
       break;
-
+    case "erase":
+      break;
     default:
-      throw new Error("Invalid element type");
+      // throw new Error("Invalid element type");
+      break;
   }
 };

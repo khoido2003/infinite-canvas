@@ -11,6 +11,7 @@ export enum ElementType {
   Line = "line",
   Circle = "circle",
   Pencil = "pencil",
+  Erase = "erase",
 }
 export interface CanvasElement {
   id: number;
