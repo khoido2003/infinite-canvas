@@ -56,6 +56,9 @@ export const createElement = ({
         elementType,
         points: [{ x: x1, y: y1 }],
       };
+
+    case "erase":
+      break;
     default:
       throw new Error("Invalid element type");
   }
